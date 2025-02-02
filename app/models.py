@@ -9,8 +9,4 @@ class Wallet(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     UUID = Column(UUID(as_uuid=True), unique=True, nullable=False, index=True)
-    amount = Column(DECIMAL, nullable=False, default=0)
-
-    # __table_args__ = (
-    #     UniqueConstraint('UUID', name='uq_wallet_uuid'),
-    # )
+    amount = Column(DECIMAL(10, 2), nullable=False, default=0)

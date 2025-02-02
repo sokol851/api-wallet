@@ -10,3 +10,11 @@ class WalletResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class WalletOperation(BaseModel):
+    operationType: str
+    amount: Decimal
+
+    class Config:
+        from_attributes = True
