@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -47,7 +47,7 @@ async def get_wallet(wallet_uuid: str, db: AsyncSession = Depends(get_session)):
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail='Неверный формат UUID. Пожалуйста, предоставьте корректный UUID.'
+            detail='Неверный формат UUID'
         )
 
     # Запрос в базу
@@ -84,48 +84,75 @@ async def operations_with_wallet(wallet_uuid: str, operation: WalletOperation, d
             detail='Неверный формат UUID'
         )
 
-    try:
-        async with db.begin():
-            # Запрос в базу
-            query = select(Wallet).where(Wallet.UUID == wallet_uuid)
-            # Ждём результат запроса
-            result = await db.execute(query)
-            # Забираем единственный результат
-            wallet = result.scalars().first()
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            async with db.begin():
+                # Запрос в базу
+                query = select(Wallet).where(Wallet.UUID == wallet_uuid).with_for_update()
+                # Ждём результат запроса
+                result = await db.execute(query)
+                # Забираем единственный результат
+                wallet = result.scalars().first()
 
-            # Если кошелька нет - исключение
-            if not wallet:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail='Кошелек не найден'
-                )
-            # Проверяем переданное значение
-            if operation.operationType == OperationType.DEPOSIT:
-                wallet.amount += operation.amount
-            elif operation.operationType == OperationType.WITHDRAW:
-                if wallet.amount < operation.amount:
+                # Если кошелька нет - исключение
+                if not wallet:
                     raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail='Недостаточно средств для снятия'
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail='Кошелек не найден'
                     )
-                wallet.amount -= operation.amount
+                # Проверяем переданное значение
+                if operation.operationType == OperationType.DEPOSIT:
+                    wallet.amount += operation.amount
+                elif operation.operationType == OperationType.WITHDRAW:
+                    if wallet.amount < operation.amount:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail='Недостаточно средств для снятия'
+                        )
+                    wallet.amount -= operation.amount
+                db.add(wallet)
+
+            # Обновляем запись в базе
+            await db.commit()
+
+            # Выходим из цикла при успешной операции
+            break
+
+        except OperationalError as e:
+            # Обработка дедлоков и других ошибок
+            await db.rollback()
+            if "deadlock detected" in str(e).lower():
+                if attempt < max_retries - 1:
+                    continue  # Повторяем попытку
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail='Системная ошибка, попробуйте позже'
+                    )
             else:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail='Недопустимый тип операции'
-                )
-            db.add(wallet)
-        await db.commit()
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail='Произошла ошибка при обработке операции'
+                ) from e
 
-    except HTTPException as e:
-        raise e
+        # Проброс исключений
+        except HTTPException as e:
+            raise e
 
-    except SQLAlchemyError:
-        await db.rollback()
+        except SQLAlchemyError:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail='Произошла ошибка при обработке операции'
+            ) from SQLAlchemyError
+
+    else:
+        # Если все попытки исчерпаны
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='Произошла ошибка при обработке операции'
-        ) from SQLAlchemyError
+            detail='Не удалось обработать операцию после нескольких попыток'
+        )
 
     return wallet
 
