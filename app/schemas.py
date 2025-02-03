@@ -1,7 +1,7 @@
 from decimal import Decimal
 from enum import Enum
 
-from pydantic import UUID4, BaseModel
+from pydantic import UUID4, BaseModel, ConfigDict
 
 
 class OperationType(str, Enum):
@@ -14,13 +14,11 @@ class WalletResponse(BaseModel):
     UUID: UUID4
     amount: Decimal
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WalletOperation(BaseModel):
     operationType: OperationType
     amount: Decimal
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
