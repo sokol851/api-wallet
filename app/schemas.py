@@ -1,6 +1,12 @@
 from decimal import Decimal
+from enum import Enum
 
 from pydantic import UUID4, BaseModel
+
+
+class OperationType(str, Enum):
+    DEPOSIT = "DEPOSIT"
+    WITHDRAW = "WITHDRAW"
 
 
 class WalletResponse(BaseModel):
@@ -13,7 +19,7 @@ class WalletResponse(BaseModel):
 
 
 class WalletOperation(BaseModel):
-    operationType: str
+    operationType: OperationType
     amount: Decimal
 
     class Config:

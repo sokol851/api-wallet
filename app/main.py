@@ -9,7 +9,7 @@ from sqlalchemy.future import select
 from app.bearer import verify_token
 from app.db import Base, async_session, engine
 from app.models import Wallet
-from app.schemas import WalletOperation, WalletResponse
+from app.schemas import OperationType, WalletOperation, WalletResponse
 
 
 async def get_session() -> AsyncSession:
@@ -67,11 +67,11 @@ async def get_wallet(wallet_uuid: str, db: AsyncSession = Depends(get_session)):
     return wallet
 
 
-@app.get('/api/v1/wallets/{wallet_uuid}/operation',
-         response_model=WalletResponse,
-         summary='Движение средств по UUID кошелька',
-         dependencies=[Depends(verify_token)],
-         tags=['Работа с кошельком'])
+@app.post('/api/v1/wallets/{wallet_uuid}/operation',
+          response_model=WalletResponse,
+          summary='Движение средств по UUID кошелька',
+          dependencies=[Depends(verify_token)],
+          tags=['Работа с кошельком'])
 async def operations_with_wallet(wallet_uuid: str, operation: WalletOperation, db: AsyncSession = Depends(get_session)):
     """ Движение средств по UUID кошелька """
 
@@ -100,9 +100,9 @@ async def operations_with_wallet(wallet_uuid: str, operation: WalletOperation, d
                     detail='Кошелек не найден'
                 )
             # Проверяем переданное значение
-            if operation.operationType == "DEPOSIT":
+            if operation.operationType == OperationType.DEPOSIT:
                 wallet.amount += operation.amount
-            elif operation.operationType == "WITHDRAW":
+            elif operation.operationType == OperationType.WITHDRAW:
                 if wallet.amount < operation.amount:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -116,8 +116,10 @@ async def operations_with_wallet(wallet_uuid: str, operation: WalletOperation, d
                 )
             db.add(wallet)
         await db.commit()
+
     except HTTPException as e:
         raise e
+
     except SQLAlchemyError:
         await db.rollback()
         raise HTTPException(
