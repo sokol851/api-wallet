@@ -9,6 +9,7 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
                                     create_async_engine)
 from sqlalchemy.sql import select, text
+from sqlalchemy import create_engine
 
 from app.db import Base
 from app.main import app, get_session, get_wallet
@@ -20,6 +21,19 @@ host = config('POSTGRES_HOST_TEST')
 port = config('POSTGRES_PORT_TEST')
 dbname = config('POSTGRES_DB_TEST')
 DATABASE_URL_TEST = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{dbname}"
+
+# Создаем движок для подключения без указания базы данных
+default_engine = create_engine(f"postgresql://{user}:{password}@{host}:{port}/postgres")
+
+# Создаем базу данных, если она не существует
+with default_engine.connect() as conn:
+    conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+    # Проверяем, существует ли база данных
+    result = conn.execute(text(f"SELECT 1 FROM pg_database WHERE datname = '{dbname}'"))
+    exists = result.scalar() is not None
+    # Создаем базу данных, если она не существует
+    if not exists:
+        conn.execute(text(f"CREATE DATABASE {dbname}"))
 
 # Создание асинхронного движка для тестовой базы данных
 test_engine = create_async_engine(DATABASE_URL_TEST, echo=False, future=True)
