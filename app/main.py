@@ -155,19 +155,3 @@ async def operations_with_wallet(wallet_uuid: str, operation: WalletOperation, d
         )
 
     return wallet
-
-
-@app.get('/api/v1/wallets',
-         response_model=list[WalletResponse],
-         summary='Получение списка кошельков',
-         dependencies=[Depends(verify_token)],
-         tags=['Работа с кошельком'])
-async def get_wallets(db: AsyncSession = Depends(get_session)):
-    """ Получения списка кошельков """
-    # Создаём запрос
-    query = select(Wallet)
-    # Отправляем запрос
-    result = await db.execute(query)
-    # Получаем результат
-    wallets = result.scalars().all()
-    return wallets
